@@ -40,3 +40,13 @@ output "kube_config" {
   value     = azurerm_kubernetes_cluster.k8s.kube_config_raw
   sensitive = true
 }
+
+output "public_ip_address" {
+  value = azurerm_windows_virtual_machine.main.public_ip_address
+}
+
+output "admin_password" {
+  sensitive = true
+  value     = azurerm_windows_virtual_machine.main.admin_password
+}
+
