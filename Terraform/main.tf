@@ -10,7 +10,7 @@ resource "azurerm_resource_group" "rg" {
 
 # Create virtual network
 resource "azurerm_virtual_network" "my_terraform_network" {
-  name                = "${random_pet.prefix.id}-vnet"
+  name                = "${random_pet.prefix.id}-Vnet"
   address_space       = ["10.0.0.0/16"]
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
@@ -18,7 +18,7 @@ resource "azurerm_virtual_network" "my_terraform_network" {
 
 # Create subnet
 resource "azurerm_subnet" "my_terraform_subnet" {
-  name                 = "${random_pet.prefix.id}-subnet"
+  name                 = "${random_pet.prefix.id}-Subnet"
   resource_group_name  = azurerm_resource_group.rg.name
   virtual_network_name = azurerm_virtual_network.my_terraform_network.name
   address_prefixes     = ["10.0.1.0/24"]
@@ -26,7 +26,7 @@ resource "azurerm_subnet" "my_terraform_subnet" {
 
 # Create public IPs
 resource "azurerm_public_ip" "my_terraform_public_ip" {
-  name                = "${random_pet.prefix.id}-public-ip"
+  name                = "${random_pet.prefix.id}-Public-ip"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   allocation_method   = "Dynamic"
@@ -34,7 +34,7 @@ resource "azurerm_public_ip" "my_terraform_public_ip" {
 
 # Create Network Security Group and rules
 resource "azurerm_network_security_group" "my_terraform_nsg" {
-  name                = "${random_pet.prefix.id}-nsg"
+  name                = "${random_pet.prefix.id}-NSG"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
 
@@ -46,6 +46,17 @@ resource "azurerm_network_security_group" "my_terraform_nsg" {
     protocol                   = "*"
     source_port_range          = "*"
     destination_port_range     = "3389"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+  security_rule {
+    name                       = "SSH"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_port_range          = "*"
+    destination_port_range     = "22"
     source_address_prefix      = "*"
     destination_address_prefix = "*"
   }
@@ -84,7 +95,7 @@ resource "azurerm_network_interface_security_group_association" "example" {
 
 # Create storage account for boot diagnostics
 resource "azurerm_storage_account" "my_storage_account" {
-  name                     = "diag${random_id.random_id.hex}"
+  name                     = "Storageacct${random_id.random_id.hex}"
   location                 = azurerm_resource_group.rg.location
   resource_group_name      = azurerm_resource_group.rg.name
   account_tier             = "Standard"
@@ -93,7 +104,7 @@ resource "azurerm_storage_account" "my_storage_account" {
 
 # Create virtual machine
 resource "azurerm_windows_virtual_machine" "main" {
-  name                  = "${var.prefix}-vm"
+  name                  = "${var.prefix}-VM"
   admin_username        = "azureuser"
   admin_password        = random_password.password.result
   location              = azurerm_resource_group.rg.location
@@ -108,9 +119,9 @@ resource "azurerm_windows_virtual_machine" "main" {
   }
 
   source_image_reference {
-    publisher = "MicrosoftWindowsServer"
-    offer     = "WindowsServer"
-    sku       = "2022-datacenter-azure-edition"
+    publisher = "Canonical"
+    offer     = "0001-com-ubuntu-server-focal"
+    sku       = "20.04-LTS"
     version   = "latest"
   }
 
@@ -144,27 +155,65 @@ resource "random_pet" "prefix" {
   length = 1
 }
 
-resource "random_pet" "azurerm_kubernetes_cluster_name" {
-  prefix = "cluster"
+resource "random_pet" "azurerm_kubernetes_cluster_dev_name" {
+  prefix = "DEVcluster"
 }
 
-resource "random_pet" "azurerm_kubernetes_cluster_dns_prefix" {
-  prefix = "dns"
+resource "random_pet" "azurerm_kubernetes_cluster_dev_dns_prefix" {
+  prefix = "Devdns"
 }
 
-resource "azurerm_kubernetes_cluster" "k8s" {
-  location            = azurerm_resource_group.rg.location
-  name                = random_pet.azurerm_kubernetes_cluster_name.id
+resource "random_pet" "azurerm_kubernetes_cluster_prod_name" {
+  prefix = "PRODcluster"
+}
+
+resource "random_pet" "azurerm_kubernetes_cluster_prod_dns_prefix" {
+  prefix = "PRODdns"
+}
+
+# Dev AKS Cluster
+resource "azurerm_kubernetes_cluster" "dev_k8s" {
+  location            = "eastus"
+  name                = random_pet.azurerm_kubernetes_cluster_dev_name.id
   resource_group_name = azurerm_resource_group.rg.name
-  dns_prefix          = random_pet.azurerm_kubernetes_cluster_dns_prefix.id
+  dns_prefix          = random_pet.azurerm_kubernetes_cluster_dev_dns_prefix.id
 
   identity {
     type = "SystemAssigned"
   }
 
   default_node_pool {
-    name       = "agentpool"
-    vm_size    = "Standard_D2_v2"
+    name       = "devagentpool"
+    vm_size    = "Standard_Ds2_v2"
+    node_count = var.node_count
+  }
+  linux_profile {
+    admin_username = var.username
+
+    ssh_key {
+      key_data = azapi_resource_action.ssh_public_key_gen.output.publicKey
+    }
+  }
+  network_profile {
+    network_plugin    = "kubenet"
+    load_balancer_sku = "standard"
+  }
+}
+
+# PROD AKS Cluster
+resource "azurerm_kubernetes_cluster" "prod_k8s" {
+  location            = "eastus"
+  name                = random_pet.azurerm_kubernetes_cluster_prod_name.id
+  resource_group_name = azurerm_resource_group.rg.name
+  dns_prefix          = random_pet.azurerm_kubernetes_cluster_prod_dns_prefix.id
+
+  identity {
+    type = "SystemAssigned"
+  }
+
+  default_node_pool {
+    name       = "prodagentpool"
+    vm_size    = "Standard_Ds2_v2"
     node_count = var.node_count
   }
   linux_profile {
