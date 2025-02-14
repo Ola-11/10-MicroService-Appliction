@@ -54,7 +54,7 @@ resource "azurerm_network_security_group" "my_terraform_nsg" {
     priority                   = 100
     direction                  = "Inbound"
     access                     = "Allow"
-    protocol                   = "*"
+    protocol                   = "Tcp"
     source_port_range          = "*"
     destination_port_range     = "22"
     source_address_prefix      = "*"
@@ -105,8 +105,6 @@ resource "azurerm_storage_account" "my_storage_account" {
 # Create virtual machine
 resource "azurerm_windows_virtual_machine" "main" {
   name                  = "${var.prefix}-VM"
-  admin_username        = "azureuser"
-  admin_password        = random_password.password.result
   location              = azurerm_resource_group.rg.location
   resource_group_name   = azurerm_resource_group.rg.name
   network_interface_ids = [azurerm_network_interface.my_terraform_nic.id]
@@ -125,6 +123,13 @@ resource "azurerm_windows_virtual_machine" "main" {
     version   = "latest"
   }
 
+  computer_name  = "hostname"
+  admin_username = var.username
+
+  admin_ssh_key {
+    username   = var.username
+    public_key = azapi_resource_action.ssh_VM_public_key_gen.output.publicKey
+  }
 
   boot_diagnostics {
     storage_account_uri = azurerm_storage_account.my_storage_account.primary_blob_endpoint
@@ -183,7 +188,7 @@ resource "azurerm_kubernetes_cluster" "dev_k8s" {
   }
 
   default_node_pool {
-    name       = "devagentpool"
+    name       = "Dev-agentpool"
     vm_size    = "Standard_Ds2_v2"
     node_count = var.node_count
   }
@@ -191,7 +196,7 @@ resource "azurerm_kubernetes_cluster" "dev_k8s" {
     admin_username = var.username
 
     ssh_key {
-      key_data = azapi_resource_action.ssh_public_key_gen.output.publicKey
+      key_data = azapi_resource_action.ssh_dev_public_key_gen.output.publicKey
     }
   }
   network_profile {
@@ -212,7 +217,7 @@ resource "azurerm_kubernetes_cluster" "prod_k8s" {
   }
 
   default_node_pool {
-    name       = "prodagentpool"
+    name       = "Prod-agentpool"
     vm_size    = "Standard_Ds2_v2"
     node_count = var.node_count
   }
@@ -220,7 +225,7 @@ resource "azurerm_kubernetes_cluster" "prod_k8s" {
     admin_username = var.username
 
     ssh_key {
-      key_data = azapi_resource_action.ssh_public_key_gen.output.publicKey
+      key_data = azapi_resource_action.ssh_prod_public_key_gen.output.publicKey
     }
   }
   network_profile {
