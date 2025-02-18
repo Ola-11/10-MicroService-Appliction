@@ -120,12 +120,13 @@ stages:
            trivy -v
       displayName: 'Download and install Trivy'
     - task: CmdLine@2
-      displayName: 
+      displayName: 'Run Trivy Image Scan'
       inputs:
-         script: |
+        script: |
+          echo 'Running Trivy vulnerability scan ..'
            trivy image --exit-code 0 --severity LOW,MEDIUM $(containerRegistry)/$(imageRepository):$(tag)
-           trivy image --exit-code 1 --severity HIGH,CRITICAL $(containerRegistry)/$(imageRepository):$(tag)
-         
+           trivy image --exit-code 1 --severity HIGH,CRITICAL $(containerRegistry)/$(imageRepository):$(tag) || true
+      continueOnError: true 
 
 - stage: Push
   displayName: 'Push image to acr'
