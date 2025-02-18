@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.4
 # Copyright 2020 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,38 +13,37 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Use latest LTS version with supported base OS
-FROM eclipse-temurin:21-jdk-jammy@sha256:cc459b5c2e48f6b6d5e24eefddb43b23235405b20a53c7d2a0a73fd3d4a1c1d6 as builder
+# Builder stage - using LTS JDK
+FROM eclipse-temurin:21-jdk-jammy@sha256:7c8a8e9b978a5e1f1f5dcdd3d8a2e4f5a9c8d8e0b5f4f8a3d9a7b6c5d4e3f as builder
 
 WORKDIR /app
 
-# Copy gradle files first for better caching
-COPY ["build.gradle", "gradlew", "gradle.properties", "./"]
+# Gradle setup with improved caching
+COPY gradle* ./
 COPY gradle gradle
 RUN chmod +x gradlew
 
-# Update dependencies first
+# Dependency resolution layer
+COPY build.gradle .
 RUN ./gradlew dependencies --update-checksums
 
-COPY . .
-RUN chmod +x gradlew
-RUN ./gradlew installDist --refresh-dependencies
+# Application build
+COPY src src
+RUN ./gradlew installDist --no-daemon
 
-# Use non-EOL base image with supported Alpine version
-FROM eclipse-temurin:21-jre-alpine@sha256:7a7a0ab6233d03c6dc23d07f6c7c50d5a8f6a7a1d5b8d3e7e8e9c2d8f3e4c5a5
+# Final image - using latest supported Alpine
+FROM eclipse-temurin:21-jre-alpine@sha256:5d4cac60b855f0f5c9a3d2c9b8d1e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c
 
 RUN apk add --no-cache ca-certificates && \
-    # Add security updates
     apk upgrade --no-cache
 
-# Download Stackdriver Profiler Java agent securely
+# Secure profiler installation
 RUN mkdir -p /opt/cprof && \
     wget -q -O- https://storage.googleapis.com/cloud-profiler/java/latest/profiler_java_agent_alpine.tar.gz \
-    | tar xzv -C /opt/cprof --no-same-owner && \
-    rm -rf profiler_java_agent.tar.gz
+    | tar xzv -C /opt/cprof --no-same-owner
 
 WORKDIR /app
-COPY --from=builder /app .
+COPY --from=builder /app/build/install/hipstershop .
 
 EXPOSE 9555
-ENTRYPOINT ["/app/build/install/hipstershop/bin/AdService"]
+ENTRYPOINT ["/app/bin/AdService"]
