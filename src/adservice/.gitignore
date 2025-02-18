@@ -4,5 +4,10 @@
 .gradle/**
 .idea/**
 build/**
-
+**/*.md
+**/.DS_Store
+.git
+build
+out
+*.iml
 
