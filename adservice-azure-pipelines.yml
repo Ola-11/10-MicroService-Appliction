@@ -104,6 +104,13 @@ stages:
       name: 'BuildRunner'
     steps:
     - task: Docker@2
+      displayName: 'Set up Docker Buildkit'
+      inputs:
+        command: 'build'
+        containerRegistry: 'docker-svc'
+        arguments: |
+           export DOCKER_BUILDKIT=1
+    - task: Docker@2
       displayName: ' Build Docker image'
       inputs:
         containerRegistry: 'docker-svc'
