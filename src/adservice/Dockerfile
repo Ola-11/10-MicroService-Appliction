@@ -14,12 +14,12 @@
 # limitations under the License.
 
 # Builder stage - using LTS JDK
-FROM eclipse-temurin:21-jdk-jammy@sha256:7c8a8e9b978a5e1f1f5dcdd3d8a2e4f5a9c8d8e0b5f4f8a3d9a7b6c5d4e3f as builder
+FROM eclipse-temurin:21-jdk-jammy as builder
 
 WORKDIR /app
 
 # Gradle setup with improved caching
-COPY gradle* ./
+COPY gradle* ./ 
 COPY gradle gradle
 RUN chmod +x gradlew
 
@@ -32,7 +32,7 @@ COPY src src
 RUN ./gradlew installDist --no-daemon
 
 # Final image - using latest supported Alpine
-FROM eclipse-temurin:21-jre-alpine@sha256:5d4cac60b855f0f5c9a3d2c9b8d1e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c
+FROM eclipse-temurin:21-jre-alpine
 
 RUN apk add --no-cache ca-certificates && \
     apk upgrade --no-cache
