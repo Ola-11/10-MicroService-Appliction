@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.4
 # Copyright 2020 Google LLC
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,37 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Builder stage - using LTS JDK
-FROM eclipse-temurin:21-jdk-jammy as builder
+FROM eclipse-temurin:19@sha256:f3fbf1ad599d4b5dbdd7ceb55708d10cb9fafb08e094ef91e92aa63b520a232e as builder
 
 WORKDIR /app
 
-# Gradle setup with improved caching
-COPY gradle* ./ 
+COPY ["build.gradle", "gradlew", "./"]
 COPY gradle gradle
 RUN chmod +x gradlew
+RUN ./gradlew downloadRepos
 
-# Dependency resolution layer
-COPY build.gradle .
-RUN ./gradlew dependencies --update-checksums
+COPY . .
+RUN chmod +x gradlew
+RUN ./gradlew installDist
 
-# Application build
-COPY src src
-RUN ./gradlew installDist --no-daemon
+FROM eclipse-temurin:19.0.1_10-jre-alpine@sha256:fabe27bd9db502d484a11d3f571c2f4ef7bba4a172527084d939935358fb06c4
 
-# Final image - using latest supported Alpine
-FROM eclipse-temurin:21-jre-alpine
+RUN apk add --no-cache ca-certificates
 
-RUN apk add --no-cache ca-certificates && \
-    apk upgrade --no-cache
-
-# Secure profiler installation
+# Download Stackdriver Profiler Java agent
 RUN mkdir -p /opt/cprof && \
     wget -q -O- https://storage.googleapis.com/cloud-profiler/java/latest/profiler_java_agent_alpine.tar.gz \
-    | tar xzv -C /opt/cprof --no-same-owner
+    | tar xzv -C /opt/cprof && \
+    rm -rf profiler_java_agent.tar.gz
 
 WORKDIR /app
-COPY --from=builder /app/build/install/hipstershop .
+COPY --from=builder /app .
 
 EXPOSE 9555
-ENTRYPOINT ["/app/bin/AdService"]
+ENTRYPOINT ["/app/build/install/hipstershop/bin/AdService"]
