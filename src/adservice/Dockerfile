@@ -12,27 +12,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM eclipse-temurin:19@sha256:f3fbf1ad599d4b5dbdd7ceb55708d10cb9fafb08e094ef91e92aa63b520a232e as builder
+# Use latest LTS version with supported base OS
+FROM eclipse-temurin:21-jdk-jammy@sha256:cc459b5c2e48f6b6d5e24eefddb43b23235405b20a53c7d2a0a73fd3d4a1c1d6 as builder
 
 WORKDIR /app
 
-COPY ["build.gradle", "gradlew", "./"]
+# Copy gradle files first for better caching
+COPY ["build.gradle", "gradlew", "gradle.properties", "./"]
 COPY gradle gradle
 RUN chmod +x gradlew
-RUN ./gradlew downloadRepos
+
+# Update dependencies first
+RUN ./gradlew dependencies --update-checksums
 
 COPY . .
 RUN chmod +x gradlew
-RUN ./gradlew installDist
+RUN ./gradlew installDist --refresh-dependencies
 
-FROM eclipse-temurin:19.0.1_10-jre-alpine@sha256:fabe27bd9db502d484a11d3f571c2f4ef7bba4a172527084d939935358fb06c4
+# Use non-EOL base image with supported Alpine version
+FROM eclipse-temurin:21-jre-alpine@sha256:7a7a0ab6233d03c6dc23d07f6c7c50d5a8f6a7a1d5b8d3e7e8e9c2d8f3e4c5a5
 
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates && \
+    # Add security updates
+    apk upgrade --no-cache
 
-# Download Stackdriver Profiler Java agent
+# Download Stackdriver Profiler Java agent securely
 RUN mkdir -p /opt/cprof && \
     wget -q -O- https://storage.googleapis.com/cloud-profiler/java/latest/profiler_java_agent_alpine.tar.gz \
-    | tar xzv -C /opt/cprof && \
+    | tar xzv -C /opt/cprof --no-same-owner && \
     rm -rf profiler_java_agent.tar.gz
 
 WORKDIR /app
