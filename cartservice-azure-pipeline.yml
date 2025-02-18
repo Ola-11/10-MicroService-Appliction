@@ -1,0 +1,143 @@
+# Docker
+# Build and push an image to Azure Container Registry
+# https://docs.microsoft.com/azure/devops/pipelines/languages/docker
+
+trigger: 
+ paths: 
+  include:
+    - src/adservice
+
+resources:
+- repo: self
+
+variables:
+  # Container registry service connection established during pipeline creation
+  dockerRegistryServiceConnection: 'cda3021d-725c-4048-9a43-ed6f9cdb7a32'
+  imageRepository: 'adservice'
+  containerRegistry: 'projectwebappacr.azurecr.io'
+  dockerfilePath: '$(Build.SourcesDirectory)/src/adservice/Dockerfile'
+  tag: '$(Build.BuildId)'
+
+pool: 
+  name: 'BuildRunner'
+
+
+
+stages:
+- stage: trivy_fs_scan
+  displayName: 'Trivy FS Scan'
+  jobs:
+    - job: trivy_fs_scan
+      displayName: 'Trivy FS Scan'
+      steps:
+
+       - task: CmdLine@2
+         inputs:
+           script: |
+             export DEBIAN_FRONTEND=noninteractive
+             sudo apt-get update
+             sudo apt-get install -y apt-transport-https wget gnupg lsb-release
+             wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+             echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
+             sudo apt-get update
+             sudo apt-get install -y trivy
+       - task: CmdLine@2
+         inputs:
+           script: 'trivy fs --format table -o fs.html .'
+- stage: Static_Analysis
+  displayName: 'Static Analysis'
+  jobs: 
+  - job: Dependencycheck
+
+    steps:
+    - task: dependency-check-build-task@6
+      inputs:
+        projectName: 'Adservicebuild'
+        scanPath: 'src/adservice'
+        format: 'HTML'
+        uploadReports: true
+        additionalArguments: '--nvdApiDelay 5000'
+        nvdApiKey: 'd406e306-acae-4f9f-ba27-f8056282aba8'
+
+
+- stage: Static_Application_Security_Testing
+  displayName:  'SonarQube_SAST'
+  jobs:
+    - job: SAST
+      steps:
+      - task: SonarQubePrepare@7
+        inputs:
+          SonarQube: 'newsonar-svc-con'
+          scannerMode: 'cli'
+          configMode: 'manual'
+          cliProjectKey: 'adservice'
+          cliProjectName: 'adservice'
+          cliSources: 'src/adservice'
+          extraProperties: |
+            # Additional properties that will be passed to the scanner, 
+            # Put one key=value per line, example:
+            # sonar.exclusions=**/*.bin
+            sonar.java.binaries=./src/adservice
+      - task: SonarQubeAnalyze@7
+        inputs:
+          jdkversion: 'JAVA_HOME_17_X64'
+
+- stage: Publishartifacts
+  displayName: 'Publish_Build_Artifacts'
+  jobs:
+     - job: publish_artifacts
+       displayName: 'Publish_Build_Artifacts'
+       steps:
+        - task: PublishPipelineArtifact@1
+          inputs:
+            targetPath: '$(Pipeline.Workspace)'
+            artifact: 'adservice-artifact'
+            publishLocation: 'pipeline'
+
+
+- stage: Build
+  displayName: 'Build and scan image'
+  jobs:
+  - job: Build
+    displayName: 'Build and scan'
+    pool: 
+      name: 'BuildRunner'
+    steps:
+    - task: Docker@2
+      displayName: ' Build Docker image'
+      inputs:
+        containerRegistry: 'docker-svc'
+        repository: '$(imageRepository)'
+        command: 'build'
+        Dockerfile: '$(Build.SourcesDirectory)/src/adservice/Dockerfile'
+        buildContext: '$(Build.SourcesDirectory)/src/adservice'
+        tags: '$(Build.BuildId)'
+    - script: |
+           trivyVersion="0.48.1"
+           sudo apt-get install -y rpm
+           wget https://github.com/aquasecurity/trivy/releases/download/v$(trivyVersion)/trivy_$(trivyVersion)_Linux-64bit.deb
+           sudo dpkg -i trivy_$(trivyVersion)_Linux-64bit.deb
+           trivy -v
+      displayName: 'Download and install Trivy'
+    - task: CmdLine@2
+      displayName: 'Run Trivy Image Scan'
+      inputs:
+        script: |
+          echo 'Running Trivy vulnerability scan ..'
+           trivy image --exit-code 0 --severity LOW,MEDIUM $(containerRegistry)/$(imageRepository):$(tag)
+           trivy image --exit-code 1 --severity HIGH,CRITICAL $(containerRegistry)/$(imageRepository):$(tag) || true
+      continueOnError: true 
+
+- stage: Push
+  displayName: 'Push image to acr'
+  jobs:
+  - job: Push
+    displayName: Push
+    steps:
+    - task: Docker@2
+      displayName: 'push an image to container registry'
+      inputs:
+        containerRegistry: 'docker-svc'
+        repository: '$(imageRepository)'
+        command: 'push'
+        tags: 'latest'
